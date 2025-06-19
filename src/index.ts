@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import cors from "cors";
+import cors, { CorsOptions } from "cors";
 import { registerRoutes } from "./routes.js";
 import dotenv from 'dotenv';
 dotenv.config();
@@ -8,7 +8,7 @@ const app = express();
 
 // CORS configuration for frontend
 app.use(cors({
-  origin: function (origin, callback) {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
@@ -33,7 +33,7 @@ app.use(cors({
   ],
   credentials: true,
   optionsSuccessStatus: 200 // Some legacy browsers choke on 204
-}));
+} as CorsOptions));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -44,10 +44,10 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson: any, ...args: any[]) {
+  const originalResJson = res.json.bind(res); // Use bind instead of overriding to maintain type safety
+  res.json = function (bodyJson: any) {
     capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
+    return originalResJson(bodyJson);
   };
 
   res.on("finish", () => {
