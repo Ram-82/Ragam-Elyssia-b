@@ -14,7 +14,8 @@ app.use(cors({
     
     const allowedOrigins = [
       process.env.FRONTEND_URL || "http://localhost:5173",
-      "http://localhost:5173" // Always allow this for development
+      "http://localhost:5173",
+      "https://www.ragamelyssia.com" // Added the production frontend URL
     ];
     
     if (allowedOrigins.includes(origin)) {
