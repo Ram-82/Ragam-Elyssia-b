@@ -19,14 +19,12 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
-  const serverOptions = {
-    middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true, // Explicitly set to 'true' to match Vite's ServerOptions type
-  };
-
   const vite = await createViteServer({
-    server: serverOptions,
+    server: {
+      middlewareMode: true,
+      hmr: { server },
+      host: true, // Use 'host' instead of 'allowedHosts' for broader compatibility
+    },
     appType: "custom",
     customLogger: {
       ...viteLogger,
