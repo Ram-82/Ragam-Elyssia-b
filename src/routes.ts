@@ -1,17 +1,17 @@
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { db } from "./db.js";
 import { consultations, contactInquiries, insertConsultationSchema, insertContactInquirySchema } from "./schema.js";
 import { eq } from "drizzle-orm";
 
 export function registerRoutes(app: express.Application) {
   // API Routes
-  app.use("/api", (req, res, next) => {
+  app.use("/api", (req: Request, res: Response, next: NextFunction) => {
     console.log(`${req.method} ${req.path}`);
     next();
   });
 
   // Submit consultation
-  app.post("/api/consultation", async (req, res) => {
+  app.post("/api/consultation", async (req: Request, res: Response) => {
     try {
       const validatedData = insertConsultationSchema.parse(req.body);
       
@@ -25,24 +25,24 @@ export function registerRoutes(app: express.Application) {
         paymentStatus: "unpaid"
       }).returning();
         
-        res.json({ 
-          success: true,
+      res.json({ 
+        success: true,
         message: "Consultation request submitted successfully",
         bookingId: consultation.bookingId,
         consultation
-        });
+      });
     } catch (error) {
       console.error("Consultation submission error:", error);
-        res.status(400).json({ 
-          success: false,
+      res.status(400).json({ 
+        success: false,
         message: "Failed to submit consultation request",
         error: error instanceof Error ? error.message : "Unknown error"
-        });
+      });
     }
   });
 
   // Submit contact form
-  app.post("/api/contact", async (req, res) => {
+  app.post("/api/contact", async (req: Request, res: Response) => {
     try {
       const validatedData = insertContactInquirySchema.parse(req.body);
       
@@ -67,7 +67,7 @@ export function registerRoutes(app: express.Application) {
   });
 
   // Get all consultations (admin endpoint)
-  app.get("/api/admin/consultations", async (req, res) => {
+  app.get("/api/admin/consultations", async (req: Request, res: Response) => {
     try {
       const allConsultations = await db.select().from(consultations).orderBy(consultations.createdAt);
       res.json({
@@ -84,7 +84,7 @@ export function registerRoutes(app: express.Application) {
   });
 
   // Get all contact inquiries (admin endpoint)
-  app.get("/api/admin/contacts", async (req, res) => {
+  app.get("/api/admin/contacts", async (req: Request, res: Response) => {
     try {
       const allContacts = await db.select().from(contactInquiries).orderBy(contactInquiries.createdAt);
       res.json({
@@ -101,7 +101,7 @@ export function registerRoutes(app: express.Application) {
   });
 
   // Update consultation status
-  app.patch("/api/admin/consultations/:id", async (req, res) => {
+  app.patch("/api/admin/consultations/:id", async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { status, scheduledDateTime } = req.body;
@@ -136,7 +136,7 @@ export function registerRoutes(app: express.Application) {
   });
 
   // Update contact status
-  app.patch("/api/admin/contacts/:id", async (req, res) => {
+  app.patch("/api/admin/contacts/:id", async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { status } = req.body;
@@ -168,7 +168,7 @@ export function registerRoutes(app: express.Application) {
   });
 
   // Database connection test endpoint
-  app.get("/api/db-test", async (req, res) => {
+  app.get("/api/db-test", async (req: Request, res: Response) => {
     try {
       // Try a simple query (e.g., select 1)
       const result = await db.execute("SELECT 1 as result");
