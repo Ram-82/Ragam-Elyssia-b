@@ -1,4 +1,4 @@
-import { users, consultations, contactInquiries, type User, type InsertUser, type Consultation, type InsertConsultation, type ContactInquiry, type InsertContactInquiry } from "./schema.js";
+import { users, consultations, contactInquiries, type User, type InsertUser, type Consultation, type InsertConsultation, type ContactInquiry, type InsertContactInquiry } from "@shared/schema";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -130,7 +130,7 @@ export class MemStorage implements IStorage {
   }
 }
 
-import { db } from "./db.js";
+import { db } from "./db";
 import { eq } from "drizzle-orm";
 
 export class DatabaseStorage implements IStorage {

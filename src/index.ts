@@ -1,20 +1,19 @@
 import express, { type Request, Response, NextFunction } from "express";
-import cors, { CorsOptions } from "cors";
+import cors from "cors";
 import { registerRoutes } from "./routes.js";
 import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
 
-// CORS configuration for frontend
 app.use(cors({
-  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+  origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
       process.env.FRONTEND_URL || "http://localhost:5173",
-      "http://localhost:5173",
+      "http://localhost:5173" // Always allow this for development
     ];
     
     if (allowedOrigins.includes(origin)) {
@@ -33,21 +32,21 @@ app.use(cors({
   ],
   credentials: true,
   optionsSuccessStatus: 200 // Some legacy browsers choke on 204
-} as CorsOptions));
+}));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 // Request logging middleware
-app.use((req: Request, res: Response, next: NextFunction) => {
+app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
-  const originalResJson = res.json.bind(res); // Use bind instead of overriding to maintain type safety
-  res.json = function (bodyJson: any) {
+  const originalResJson = res.json;
+  res.json = function (bodyJson, ...args) {
     capturedJsonResponse = bodyJson;
-    return originalResJson(bodyJson);
+    return originalResJson.apply(res, [bodyJson, ...args]);
   };
 
   res.on("finish", () => {
@@ -81,14 +80,10 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);
 });
 
-// Health check endpoint
-app.get("/health", (req: Request, res: Response) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
-});
 
 // Start server
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
-  console.log(`📊 Health check: http://localhost:${port}/health`);
+  console.log(`📊 Health check: http://localhost:${port}/api/health`);
 });

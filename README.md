@@ -1,1 +1,2 @@
-# Ragam-Elyssia-b
+# npm install
+# npm run dev

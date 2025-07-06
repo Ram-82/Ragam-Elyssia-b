@@ -4,8 +4,13 @@ import { z } from "zod";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  passwordResetToken: text("password_reset_token"),
+  passwordResetExpires: timestamp("password_reset_expires"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const consultations = pgTable("consultations", {
@@ -58,8 +63,9 @@ export type InsertContactInquiry = z.infer<typeof insertContactInquirySchema>;
 export type ContactInquiry = typeof contactInquiries.$inferSelect;
 
 export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+  fullName: true,
+  email: true,
+  passwordHash: true,
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
