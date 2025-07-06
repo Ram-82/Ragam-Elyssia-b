@@ -310,7 +310,7 @@ export function registerRoutes(app: express.Application) {
                 <p style="color: #a68a64; font-size: 1rem; margin: 0;">We received a request to reset your password.</p>
               </div>
               <div style="margin: 32px 0; text-align: center;">
-                <a href="${resetLink}" style="display: inline-block; background: linear-gradient(90deg, #ffe0a3 0%, #e2c9a0 100%); color: #7c5e2c; font-weight: 600; text-decoration: none; padding: 14px 36px; border-radius: 12px; font-size: 1.1rem; box-shadow: 0 2px 8px rgba(124,94,44,0.07); transition: background 0.2s;">
+                <a href="${resetLink}" style="display: inline-block; background: #ffe0a3 !important; color: #7c5e2c !important; font-weight: 600; text-decoration: none; padding: 14px 36px; border-radius: 12px; font-size: 1.1rem; box-shadow: 0 2px 8px rgba(124,94,44,0.07); transition: background 0.2s;">
                   Set New Password
                 </a>
               </div>
