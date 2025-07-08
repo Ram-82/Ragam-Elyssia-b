@@ -4,7 +4,7 @@ import { consultations, contactInquiries, insertConsultationSchema, insertContac
 import { eq } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { users } from "./schema.js";
+import { users, admins } from "./schema.js";
 import { z } from "zod";
 import crypto from "crypto";
 import FormData from "form-data";
@@ -24,12 +24,22 @@ export function registerRoutes(app: express.Application) {
       
       // Generate booking ID
       const bookingId = `RGM-${Date.now()}`;
-      
+      let userId = null;
+      // If user is logged in, set userId from JWT
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const token = authHeader.split(' ')[1];
+          const decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme') as { userId: number, email: string };
+          userId = decoded.userId;
+        } catch {}
+      }
       const [consultation] = await db.insert(consultations).values({
         ...validatedData,
         bookingId,
         status: "pending",
-        paymentStatus: "unpaid"
+        paymentStatus: "unpaid",
+        userId: userId || null
       }).returning();
         
       res.json({ 
@@ -52,10 +62,20 @@ export function registerRoutes(app: express.Application) {
   app.post("/api/contact", async (req: Request, res: Response): Promise<void> => {
     try {
       const validatedData = insertContactInquirySchema.parse(req.body);
-      
+      let userId = null;
+      // If user is logged in, set userId from JWT
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const token = authHeader.split(' ')[1];
+          const decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme') as { userId: number, email: string };
+          userId = decoded.userId;
+        } catch {}
+      }
       const [contact] = await db.insert(contactInquiries).values({
         ...validatedData,
-        status: "new"
+        status: "new",
+        userId: userId || null
       }).returning();
 
       res.json({
@@ -73,8 +93,61 @@ export function registerRoutes(app: express.Application) {
     }
   });
 
+  // --- AUTH MIDDLEWARES ---
+  function authenticateJWT(req: Request, res: Response, next: NextFunction) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Missing or invalid Authorization header' });
+    }
+    const token = authHeader.split(' ')[1];
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme') as { userId: number, email: string };
+      // Fetch user from DB to get role
+      db.select().from(users).where(eq(users.id, decoded.userId)).then(([user]) => {
+        if (!user) return res.status(401).json({ success: false, message: 'User not found' });
+        (req as any).user = user;
+        next();
+      }).catch(() => res.status(500).json({ success: false, message: 'Auth DB error' }));
+    } catch (err) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    }
+  }
+
+  // New: Admin JWT authentication middleware
+  function authenticateAdminJWT(req: Request, res: Response, next: NextFunction) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Missing or invalid Authorization header' });
+    }
+    const token = authHeader.split(' ')[1];
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme') as { adminId: number, email: string, isAdmin: boolean };
+      if (!decoded.isAdmin) {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+      }
+      db.select().from(admins).where(eq(admins.id, decoded.adminId)).then(([admin]) => {
+        if (!admin) return res.status(401).json({ success: false, message: 'Admin not found' });
+        (req as any).admin = admin;
+        next();
+      }).catch((err) => {
+        res.status(500).json({ success: false, message: 'Auth DB error' });
+      });
+    } catch (err) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    }
+  }
+
+  function requireAdmin(req: Request, res: Response, next: NextFunction) {
+    // For admin endpoints, check req.admin
+    const admin = (req as any).admin;
+    if (!admin) {
+      return res.status(403).json({ success: false, message: 'Admin access required' });
+    }
+    next();
+  }
+
   // Get all consultations (admin endpoint)
-  app.get("/api/admin/consultations", async (req: Request, res: Response): Promise<void> => {
+  app.get("/api/admin/consultations", authenticateAdminJWT, requireAdmin, async (req: Request, res: Response): Promise<void> => {
     try {
       const allConsultations = await db.select().from(consultations).orderBy(consultations.createdAt);
       res.json({
@@ -91,7 +164,7 @@ export function registerRoutes(app: express.Application) {
   });
 
   // Get all contact inquiries (admin endpoint)
-  app.get("/api/admin/contacts", async (req: Request, res: Response): Promise<void> => {
+  app.get("/api/admin/contacts", authenticateAdminJWT, requireAdmin, async (req: Request, res: Response): Promise<void> => {
     try {
       const allContacts = await db.select().from(contactInquiries).orderBy(contactInquiries.createdAt);
       res.json({
@@ -107,16 +180,17 @@ export function registerRoutes(app: express.Application) {
     }
   });
 
-  // Update consultation status
-  app.patch("/api/admin/consultations/:id", async (req: Request, res: Response): Promise<void> => {
+  // Update consultation status and admin comment
+  app.patch("/api/admin/consultations/:id", authenticateAdminJWT, requireAdmin, async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
-      const { status, scheduledDateTime } = req.body;
+      const { status, scheduledDateTime, adminComment } = req.body;
       
       const [updated] = await db.update(consultations)
         .set({ 
           status: status || "pending",
-          scheduledDateTime: scheduledDateTime || null
+          scheduledDateTime: scheduledDateTime || null,
+          adminComment: adminComment !== undefined ? adminComment : undefined
         })
         .where(eq(consultations.id, parseInt(id)))
         .returning();
@@ -143,14 +217,17 @@ export function registerRoutes(app: express.Application) {
     }
   });
 
-  // Update contact status
-  app.patch("/api/admin/contacts/:id", async (req: Request, res: Response): Promise<void> => {
+  // Update contact status and admin comment
+  app.patch("/api/admin/contacts/:id", authenticateAdminJWT, requireAdmin, async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
-      const { status } = req.body;
+      const { status, adminComment } = req.body;
       
       const [updated] = await db.update(contactInquiries)
-        .set({ status: status || "new" })
+        .set({ 
+          status: status || "new",
+          adminComment: adminComment !== undefined ? adminComment : undefined
+        })
         .where(eq(contactInquiries.id, parseInt(id)))
         .returning();
 
@@ -173,6 +250,92 @@ export function registerRoutes(app: express.Application) {
         success: false,
         message: "Failed to update contact inquiry"
       });
+    }
+  });
+
+  // Get logged-in user's consultations
+  app.get("/api/my/consultations", authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+    const user = (req as any).user;
+    try {
+      let myConsultations;
+      if (user && user.id) {
+        myConsultations = await db.select().from(consultations).where(eq(consultations.userId, user.id));
+      } else {
+        // fallback to email for backward compatibility
+        myConsultations = await db.select().from(consultations).where(eq(consultations.email, user.email));
+      }
+      res.json({ success: true, consultations: myConsultations });
+    } catch (error) {
+      res.status(500).json({ success: false, message: "Failed to fetch your consultations" });
+    }
+  });
+
+  // PATCH: Update logged-in user's consultation
+  app.patch("/api/my/consultations/:id", authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+    const user = (req as any).user;
+    const { id } = req.params;
+    const { eventType, eventDate, location, budget, details } = req.body;
+    try {
+      // Only allow update if consultation belongs to the user
+      const [consultation] = await db.select().from(consultations).where(eq(consultations.id, parseInt(id)));
+      if (!consultation || consultation.userId !== user.id) {
+        res.status(403).json({ success: false, message: "Not authorized to update this consultation" });
+        return;
+      }
+      const [updated] = await db.update(consultations)
+        .set({ eventType, eventDate, location, budget, details })
+        .where(eq(consultations.id, parseInt(id)))
+        .returning();
+      res.json({ success: true, consultation: updated });
+    } catch (error) {
+      res.status(500).json({ success: false, message: "Failed to update consultation" });
+    }
+  });
+
+  // Get logged-in user's contact requests
+  app.get("/api/my/contacts", authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+    const user = (req as any).user;
+    try {
+      let myContacts;
+      if (user && user.id) {
+        myContacts = await db.select().from(contactInquiries).where(eq(contactInquiries.userId, user.id));
+      } else {
+        // fallback to email for backward compatibility
+        myContacts = await db.select().from(contactInquiries).where(eq(contactInquiries.email, user.email));
+      }
+      res.json({ success: true, contacts: myContacts });
+    } catch (error) {
+      res.status(500).json({ success: false, message: "Failed to fetch your contact requests" });
+    }
+  });
+
+  // Get current user info
+  app.get("/api/me", authenticateJWT, async (req: Request, res: Response): Promise<void> => {
+    const user = (req as any).user;
+    if (!user) {
+      res.status(401).json({ success: false, message: "Not authenticated" });
+      return;
+    }
+    // Only return safe fields
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        createdAt: user.createdAt,
+        role: user.role
+      }
+    });
+  });
+
+  // Add endpoint to get total number of admins
+  app.get("/api/admins/count", authenticateAdminJWT, requireAdmin, async (req: Request, res: Response): Promise<void> => {
+    try {
+      const result = await db.select().from(admins);
+      res.json({ success: true, count: result.length });
+    } catch (error) {
+      res.status(500).json({ success: false, message: "Failed to fetch admin count" });
     }
   });
 
@@ -326,7 +489,7 @@ export function registerRoutes(app: express.Application) {
           `,
         });
       } catch (mailError) {
-        console.error("Mailgun error:", mailError);
+        console.error("error:", mailError);
         // Don't reveal email errors to the user for security
       }
       res.json({ success: true, message: "If that email exists, a reset link will be sent." });
@@ -359,6 +522,31 @@ export function registerRoutes(app: express.Application) {
     } catch (error) {
       console.error("Password reset error:", error);
       res.status(500).json({ success: false, message: "Password reset failed" });
+    }
+  });
+
+  // Admin login endpoint
+  app.post("/api/admin/login", async (req: Request, res: Response): Promise<void> => {
+    const { email, password, securityCode } = req.body;
+    if (!email || !password || !securityCode) {
+      res.status(400).json({ success: false, message: "Email, password, and security code are required" });
+      return;
+    }
+    try {
+      const [admin] = await db.select().from(admins).where(eq(admins.email, email));
+      if (!admin) {
+        res.status(401).json({ success: false, message: "Invalid credentials" });
+        return;
+      }
+      const valid = await bcrypt.compare(password, admin.passwordHash);
+      if (!valid || admin.securityCode !== securityCode) {
+        res.status(401).json({ success: false, message: "Invalid credentials or security code" });
+        return;
+      }
+      const token = jwt.sign({ adminId: admin.id, email: admin.email, isAdmin: true }, process.env.JWT_SECRET || "changeme", { expiresIn: "7d" });
+      res.json({ success: true, token, admin: { id: admin.id, email: admin.email } });
+    } catch (error) {
+      res.status(500).json({ success: false, message: "Admin login failed" });
     }
   });
 }
