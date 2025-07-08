@@ -52,7 +52,8 @@ export class MemStorage implements IStorage {
       createdAt: new Date(),
       updatedAt: new Date(),
       passwordResetToken: null,
-      passwordResetExpires: null
+      passwordResetExpires: null,
+      role: 'user', // Ensure role is always set
     };
     this.users.set(id, user);
     return user;
@@ -60,7 +61,7 @@ export class MemStorage implements IStorage {
 
   async createConsultation(insertConsultation: InsertConsultation): Promise<Consultation> {
     const id = this.currentConsultationId++;
-    const bookingId = `RE2024-${String(id).padStart(4, '0')}`;
+    const bookingId = `RE2025-${String(id).padStart(4, '0')}`;
     const consultation: Consultation = {
       ...insertConsultation,
       id,
@@ -71,6 +72,8 @@ export class MemStorage implements IStorage {
       paymentIntentId: null,
       createdAt: new Date(),
       details: insertConsultation.details || null,
+      adminComment: insertConsultation.adminComment ?? null, // Ensure adminComment is always set
+      userId: insertConsultation.userId ?? null, // Ensure userId is always present
     };
     this.consultations.set(id, consultation);
     return consultation;
@@ -127,6 +130,8 @@ export class MemStorage implements IStorage {
       id,
       status: "new",
       createdAt: new Date(),
+      adminComment: insertInquiry.adminComment ?? null, // Ensure adminComment is always set
+      userId: insertInquiry.userId ?? null, // Ensure userId is always present
     };
     this.contactInquiries.set(id, inquiry);
     return inquiry;
